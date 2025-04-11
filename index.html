@@ -1,11 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Dynamic Speed Map (Vision Zero + Scroll Update)</title>
+  <title>Dynamic Speed Map (Vision Zero + Toggle + Scroll)</title>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
     #map { height: 100vh; }
@@ -42,23 +41,20 @@
   <div id="map"></div>
   <div id="loading">Loading roads...</div>
 
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-
   <script>
     const map = L.map('map').setView([41.325, -74.165], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
 
-    let currentZipcode = '10950';  // default
+    let currentZipcode = '10950';
     let currentRequestId = 0;
 
     function getInferredSpeed(roadType, zip) {
       const isNYC = /^10[0-2]\d{2}$/.test(zip);
       if (isNYC) return '25';
-
-      const ruralDefaults = {
+      const defaults = {
         primary: '55',
         secondary: '45',
         tertiary: '35',
@@ -66,87 +62,17 @@
         unclassified: '30',
         service: '15'
       };
-      return ruralDefaults[roadType] || '30';
-    }
-
-    async function fetchAndDraw(overpassQuery) {
-      const requestId = ++currentRequestId;
-      document.getElementById('loading').style.display = 'block';
-
-      try {
-        const response = await fetch('https://overpass-api.de/api/interpreter', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: `data=${encodeURIComponent(overpassQuery)}`
-        });
-
-        const data = await response.json();
-        if (requestId !== currentRequestId) return; // stale request
-
-        const nodes = {};
-        data.elements
-          .filter(el => el.type === 'node')
-          .forEach(node => {
-            nodes[node.id] = [node.lat, node.lon];
-          });
-
-        const roads = data.elements
-          .filter(el => el.type === 'way')
-          .map(el => {
-            const coords = el.nodes.map(id => nodes[id]).filter(Boolean);
-            const tags = el.tags || {};
-            const type = tags.highway || 'unknown';
-
-            let rawSpeed = tags.maxspeed || getInferredSpeed(type, currentZipcode) || 'unknown';
-            rawSpeed = rawSpeed.replace(/[^\d]/g, '') || 'unknown';
-
-            return {
-              coords,
-              speedValue: rawSpeed,
-              isMax: !!tags.maxspeed
-            };
-          });
-
-        roads.forEach(road => {
-          if (road.coords.length < 2) return;
-
-          const polyline = L.polyline(road.coords, {
-            color: road.isMax ? 'red' : 'goldenrod',
-            weight: 3,
-            opacity: 0.8
-          }).addTo(map);
-
-          const centerIndex = Math.floor(road.coords.length / 2);
-          const center = road.coords[centerIndex];
-
-          if (center) {
-            const divIcon = L.divIcon({
-              html: `<div class="label-text ${road.isMax ? 'red' : 'yellow'}">${road.speedValue}</div>`,
-              className: '',
-              iconSize: null
-            });
-
-            L.marker(center, { icon: divIcon }).addTo(map);
-          }
-        });
-      } catch (error) {
-        alert('Error fetching Overpass data.');
-      } finally {
-        document.getElementById('loading').style.display = 'none';
-      }
+      return defaults[roadType] || '30';
     }
 
     function buildQueryFromBounds(bounds) {
-      const south = bounds.getSouth();
-      const west = bounds.getWest();
-      const north = bounds.getNorth();
-      const east = bounds.getEast();
-
+      const s = bounds.getSouth(), w = bounds.getWest();
+      const n = bounds.getNorth(), e = bounds.getEast();
       return `
 [out:json][timeout:25];
 (
   way["highway"~"residential|primary|secondary|tertiary|unclassified|service"](
-    ${south},${west},${north},${east}
+    ${s},${w},${n},${e}
   );
 );
 out body;
@@ -163,29 +89,86 @@ out skel qt;
       });
     }
 
-    // Initial load
-    const initialBounds = map.getBounds();
-    fetchAndDraw(buildQueryFromBounds(initialBounds));
+    async function fetchAndDraw(overpassQuery) {
+      const requestId = ++currentRequestId;
+      document.getElementById('loading').style.display = 'block';
 
-    // Debounced scroll update
+      const showMax = document.getElementById('toggleMaxSpeed')?.checked ?? true;
+      const showInferred = document.getElementById('toggleInferredSpeed')?.checked ?? false;
+
+      try {
+        const response = await fetch('https://overpass-api.de/api/interpreter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `data=${encodeURIComponent(overpassQuery)}`
+        });
+
+        const data = await response.json();
+        if (requestId !== currentRequestId) return;
+
+        const nodes = {};
+        data.elements.filter(el => el.type === 'node').forEach(node => {
+          nodes[node.id] = [node.lat, node.lon];
+        });
+
+        const roads = data.elements.filter(el => el.type === 'way').map(el => {
+          const coords = el.nodes.map(id => nodes[id]).filter(Boolean);
+          const tags = el.tags || {};
+          const type = tags.highway || 'unknown';
+          let rawSpeed = tags.maxspeed || getInferredSpeed(type, currentZipcode);
+          rawSpeed = rawSpeed.replace(/[^\d]/g, '') || 'unknown';
+          return { coords, speedValue: rawSpeed, isMax: !!tags.maxspeed };
+        });
+
+        roads.forEach(road => {
+          if (road.coords.length < 2) return;
+          const showThis = road.isMax ? showMax : showInferred;
+          if (!showThis) return;
+
+          const polyline = L.polyline(road.coords, {
+            color: road.isMax ? 'red' : 'goldenrod',
+            weight: 3,
+            opacity: 0.8
+          }).addTo(map);
+
+          const center = road.coords[Math.floor(road.coords.length / 2)];
+          if (center) {
+            const divIcon = L.divIcon({
+              html: `<div class="label-text ${road.isMax ? 'red' : 'yellow'}">${road.speedValue}</div>`,
+              className: '', iconSize: null
+            });
+            L.marker(center, { icon: divIcon }).addTo(map);
+          }
+        });
+      } catch (error) {
+        alert('Error fetching Overpass data.');
+      } finally {
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    // Initial render
+    fetchAndDraw(buildQueryFromBounds(map.getBounds()));
+
+    // Debounced scroll updates
     let debounceTimer;
     map.on('moveend', () => {
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         clearMapOverlays();
         fetchAndDraw(buildQueryFromBounds(map.getBounds()));
-      }, 1000); // 1s debounce
+      }, 1000);
     });
 
     // Legend
     const legend = L.control({ position: 'bottomright' });
-    legend.onAdd = function () {
+    legend.onAdd = () => {
       const div = L.DomUtil.create('div', 'legend');
       div.innerHTML = `
         <div style="background: white; padding: 10px; border-radius: 5px;">
           <h4>Legend</h4>
           <label><input type="checkbox" id="toggleMaxSpeed" checked /> Maxspeed (Red)</label><br/>
-          <label><input type="checkbox" id="toggleInferredSpeed" checked /> Inferred (Yellow)</label>
+          <label><input type="checkbox" id="toggleInferredSpeed" /> Inferred (Yellow)</label>
         </div>
       `;
       return div;
@@ -193,21 +176,15 @@ out skel qt;
     legend.addTo(map);
 
     document.addEventListener('change', e => {
-      if (e.target.id === 'toggleMaxSpeed') {
-        document.querySelectorAll('.red').forEach(el => {
-          el.style.display = e.target.checked ? 'inline-block' : 'none';
-        });
-      }
-      if (e.target.id === 'toggleInferredSpeed') {
-        document.querySelectorAll('.yellow').forEach(el => {
-          el.style.display = e.target.checked ? 'inline-block' : 'none';
-        });
+      if (e.target.id === 'toggleMaxSpeed' || e.target.id === 'toggleInferredSpeed') {
+        clearMapOverlays();
+        fetchAndDraw(buildQueryFromBounds(map.getBounds()));
       }
     });
 
-    // Zipcode lookup
+    // ZIP input
     const locationInput = L.control({ position: 'topright' });
-    locationInput.onAdd = function () {
+    locationInput.onAdd = () => {
       const div = L.DomUtil.create('div', 'location-input');
       div.innerHTML = `
         <div style="background: white; padding: 10px; border-radius: 5px;">
@@ -222,33 +199,21 @@ out skel qt;
 
     document.addEventListener('click', async e => {
       if (e.target.id !== 'goButton') return;
-
       const zipcode = document.getElementById('zipcodeInput').value.trim();
-      if (!zipcode) {
-        alert('Please enter a valid ZIP code.');
-        return;
-      }
-
+      if (!zipcode) return alert('Enter a valid ZIP code.');
       currentZipcode = zipcode;
 
       try {
-        const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&postalcode=${zipcode}&country=us&limit=1`);
-        const data = await response.json();
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&postalcode=${zipcode}&country=us&limit=1`);
+        const data = await res.json();
+        if (!data.length) return alert('ZIP code not found.');
 
-        if (data.length > 0) {
-          const { lat, lon } = data[0];
-          const centerLat = parseFloat(lat);
-          const centerLon = parseFloat(lon);
-
-          map.setView([centerLat, centerLon], 13);
-
-          clearMapOverlays();
-          fetchAndDraw(buildQueryFromBounds(map.getBounds()));
-        } else {
-          alert('No location found for that ZIP code.');
-        }
+        const { lat, lon } = data[0];
+        map.setView([parseFloat(lat), parseFloat(lon)], 13);
+        clearMapOverlays();
+        fetchAndDraw(buildQueryFromBounds(map.getBounds()));
       } catch (err) {
-        alert('Error fetching location.');
+        alert('Error finding ZIP code.');
       }
     });
   </script>
