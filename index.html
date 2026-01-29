@@ -138,12 +138,33 @@
       font-size: 12px;
       display: none;
     }
+
+    .hover-tooltip {
+      position: absolute;
+      z-index: 1001;
+      background: rgba(15, 23, 42, 0.9);
+      color: #f1f5f9;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      pointer-events: none;
+      display: none;
+      white-space: nowrap;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+
+    .hover-tooltip .speed-value {
+      font-size: 14px;
+      font-weight: 700;
+    }
   </style>
 </head>
 <body>
   <div id="app">
     <div id="map"></div>
     <div id="loading" class="loading">Loading road speeds…</div>
+    <div id="hover-tooltip" class="hover-tooltip"></div>
 
     <div class="panel top-left">
       <div class="panel-title">Mapspeed + Route Simulator</div>
@@ -200,6 +221,7 @@
     const toggleBtnEl = document.getElementById('toggle-btn');
     const dwellEl = document.getElementById('dwell');
     const speedLimitEl = document.getElementById('speed-limit');
+    const hoverTooltip = document.getElementById('hover-tooltip');
 
     const speedColorMap = {
       5: '#8B0000', 10: '#DC143C', 15: '#FF0000', 20: '#FF4500',
@@ -239,6 +261,7 @@
     }
 
     const roadLayerGroup = L.layerGroup().addTo(map);
+    const routeLayerGroup = L.layerGroup().addTo(map); // Separate layer for route, stays on top
     let roadSpeedPoints = [];
     const overpassEndpoints = [
       'https://overpass-api.de/api/interpreter',
@@ -417,6 +440,23 @@
       return bestDist <= maxDistMeters * maxDistMeters ? bestSpeed : null;
     }
 
+    // Hover tooltip for road speed
+    map.on('mousemove', (e) => {
+      const speed = getNearestRoadSpeed(e.latlng.lat, e.latlng.lng);
+      if (speed) {
+        hoverTooltip.innerHTML = `<span class="speed-value">${speed}</span> mph`;
+        hoverTooltip.style.display = 'block';
+        hoverTooltip.style.left = (e.containerPoint.x + 15) + 'px';
+        hoverTooltip.style.top = (e.containerPoint.y - 10) + 'px';
+      } else {
+        hoverTooltip.style.display = 'none';
+      }
+    });
+
+    map.on('mouseout', () => {
+      hoverTooltip.style.display = 'none';
+    });
+
     async function fetchAndDisplayRoute(start, end) {
       try {
         const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
@@ -434,10 +474,11 @@
         routePolyline?.remove();
         routePolyline = L.polyline(coordinates, {
           color: '#0ea5e9',
-          weight: 3,
-          opacity: 0.85,
+          weight: 5,
+          opacity: 0.9,
           interactive: false
-        }).addTo(map);
+        });
+        routeLayerGroup.addLayer(routePolyline);
 
         map.fitBounds(routePolyline.getBounds().pad(0.1));
 
@@ -525,7 +566,8 @@
     function updateRoute() {
       if (!simulator) return;
 
-      simulator.update(0.1);
+      // Run at 10x speed for better visualization (vehicle moves faster, but shows actual speed)
+      simulator.update(1.0);
       const status = simulator.getStatus();
 
       if (vehicleMarker) {
