@@ -585,6 +585,13 @@
     function updateRoute() {
       if (!simulator) return;
 
+      // Update simulator's speed limit based on current position (live lookup)
+      const pos = simulator.getCurrentPosition();
+      const liveSpeed = getNearestRoadSpeed(pos[0], pos[1]);
+      if (liveSpeed) {
+        simulator.speedLimits[simulator.currentWaypointIdx] = liveSpeed;
+      }
+
       simulator.update(0.1);
       const status = simulator.getStatus();
 
