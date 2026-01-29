@@ -588,8 +588,11 @@
       // Update simulator's speed limit based on current position (live lookup)
       const pos = simulator.getCurrentPosition();
       const liveSpeed = getNearestRoadSpeed(pos[0], pos[1]);
-      if (liveSpeed) {
+      if (liveSpeed && liveSpeed > 0) {
         simulator.speedLimits[simulator.currentWaypointIdx] = liveSpeed;
+      } else if (!simulator.speedLimits[simulator.currentWaypointIdx]) {
+        // Fallback if no speed data available
+        simulator.speedLimits[simulator.currentWaypointIdx] = 30;
       }
 
       simulator.update(0.1);
