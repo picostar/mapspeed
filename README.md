@@ -1,8 +1,8 @@
 
 
-# Dynamic Speed Map
+# Mapspeed + Route Simulator
 
-A web-based mapping tool that visualizes speed limits on roads using OpenStreetMap data. This project is designed to display both maximum speed limits and inferred speeds for roads within a given area, with support for toggling between the two.
+A web-based mapping tool that visualizes speed limits on roads using OpenStreetMap data, with an integrated route simulator for planning and visualizing vehicle travel.
 
 ## Features
 
@@ -11,20 +11,25 @@ A web-based mapping tool that visualizes speed limits on roads using OpenStreetM
 
 - **Dynamic Speed Limits**  
   Visualizes both maximum speed limits and inferred speed limits for roads.
+  - Solid lines: Confirmed speed limits from OpenStreetMap
+  - Dashed lines: Inferred speeds based on road type
 
-- **ZIP Code Search**  
-  Allows users to search for locations by entering a ZIP code.
+- **Route Simulator**  
+  Plan routes by clicking start and end points on the map.
+  - Physics-based vehicle simulation with realistic acceleration/deceleration
+  - Speed limit compliance - vehicle follows road speed limits
+  - Intersection stops with 3-10 second dwell times
+  - Real-time display of speed, ETA, distance, and progress
+
+- **Speed Limit Sign Display**  
+  Shows the current road's speed limit as a visual sign
 
 - **Real-time Updates**  
   Automatically fetches and displays road data when the map is moved or zoomed.
 
-- **Legend & UI Controls**  
-  - Toggle the display of maximum speed (red) and inferred speed (yellow).
-  - Input ZIP codes to quickly navigate to specific areas.
-
 ## Demo
 
-https://picostar.github.io/mapspeed/ 
+https://picostar.github.io/mapspeed/
 
 ## Getting Started
 
@@ -38,55 +43,80 @@ To run this project, you need a modern web browser with JavaScript enabled. The 
    ```bash
    git clone https://github.com/picostar/mapspeed.git
    ```
-2. Open the `index.html` file in your browser.
+2. Open `index-with-routing.html` in your browser, or serve via a local HTTP server:
+   ```bash
+   python -m http.server 8000
+   ```
+   Then navigate to `http://localhost:8000/index-with-routing.html`
 
 ### Usage
 
 1. **Explore the Map**  
-   Navigate around the map to view roads and their speed limits. Roads with maximum speed limits are marked in **red**, and roads with inferred speeds are marked in **yellow**.
+   Navigate around the map to view roads and their speed limits. Color coding indicates speed:
+   - Red/Orange: Lower speeds (5-25 mph)
+   - Yellow/Green: Medium speeds (30-50 mph)
+   - Blue: Higher speeds (55-75 mph)
 
-2. **Search by ZIP Code**  
-   - Enter a ZIP code in the top-right input box and click "Go" to jump to that area.
-   - The map will fetch and display road data for the selected ZIP code.
+2. **Plan a Route**  
+   - Click on the map to set a start location (green marker)
+   - Click again to set an end location (red marker)
+   - The route will be calculated and the simulation begins automatically
 
-3. **Toggle Speed Display**  
-   Use the checkboxes in the legend (bottom-right) to toggle between displaying maximum speed and inferred speed overlays.
+3. **Control the Simulation**  
+   - **Pause/Resume**: Pause and resume the vehicle simulation
+   - **Reset Route**: Clear the route and start over
+
+4. **View Trip Info**  
+   The bottom panel shows:
+   - Distance remaining
+   - Current vehicle speed
+   - Estimated time of arrival (ETA)
+   - Progress percentage
+   - Dwell countdown when stopped at intersections
 
 ### How It Works
 
-- **Data Source**:  
-  The map fetches road data from [OpenStreetMap's Overpass API](https://overpass-api.de/).
+- **Data Sources**:  
+  - Road data: [OpenStreetMap's Overpass API](https://overpass-api.de/)
+  - Routing: [OSRM (Open Source Routing Machine)](https://router.project-osrm.org/)
 
 - **Speed Inference**:  
-  If a road does not have a defined `maxspeed` tag, the application infers speed limits based on road types using the following defaults:
+  If a road does not have a defined `maxspeed` tag, the application infers speed limits based on road types:
+  - **Motorway**: 65 mph
   - **Primary**: 55 mph
   - **Secondary**: 45 mph
   - **Tertiary**: 35 mph
   - **Residential**: 25 mph
-  - **Unclassified**: 30 mph
   - **Service**: 15 mph
 
-- **Dynamic Updates**:  
-  The map fetches new data whenever the visible map area changes (e.g., zoom or drag).
+- **Simulation Physics**:  
+  - Comfort acceleration: 8 ft/s² (~2.4 m/s²)
+  - Comfort deceleration: 10 ft/s² (~3 m/s²)
+  - Post-stop gentle acceleration: 5 ft/s²
+  - Corner detection: >30° turn angle triggers intersection stop
 
 ### Technologies Used
 
-- **[Leaflet.js](https://leafletjs.com/)**: Interactive map rendering.
-- **[OpenStreetMap](https://www.openstreetmap.org/)**: Road and location data.
-- **HTML, CSS, JavaScript**: Core technologies for building the app.
+- **[Leaflet.js](https://leafletjs.com/)**: Interactive map rendering
+- **[OpenStreetMap](https://www.openstreetmap.org/)**: Road and location data
+- **[OSRM](https://router.project-osrm.org/)**: Route calculation
+- **HTML, CSS, JavaScript**: Core technologies
 
 ### Folder Structure
 
 ```plaintext
 mapspeed/
-├── index.html  # Main application file
-└── README.md   # Project documentation
+├── index-with-routing.html  # Main application (map + route simulator)
+├── index.html               # Legacy version (map only)
+├── route-simulator.js       # Physics-based route simulation engine
+└── README.md                # Project documentation
 ```
 
 ### Limitations
 
-- The accuracy of speed limits depends on the data available in OpenStreetMap.
-- Currently, only supports locations in the United States.
+- The accuracy of speed limits depends on data available in OpenStreetMap
+- Route calculation uses OSRM public server (may have rate limits)
+- Overpass API has multiple fallback endpoints for reliability
 
 ### Contributions
 
