@@ -333,6 +333,9 @@
         roadStatusEl.textContent = roadCount > 0
           ? `Road speeds loaded: ${roadCount} (inferred: ${inferredCount})`
           : 'No speed-tagged roads found in view.';
+        
+        // Bring route layer to front after roads reload
+        routeLayerGroup.bringToFront();
       } catch (err) {
         console.error('Error loading roads:', err);
         roadStatusEl.textContent = 'Road speeds failed to load. Pan or zoom and try again.';
@@ -566,8 +569,7 @@
     function updateRoute() {
       if (!simulator) return;
 
-      // Run at 10x speed for better visualization (vehicle moves faster, but shows actual speed)
-      simulator.update(1.0);
+      simulator.update(0.1);
       const status = simulator.getStatus();
 
       if (vehicleMarker) {
