@@ -1,5 +1,3 @@
-
-
 # Mapspeed + Route Simulator
 
 A web-based mapping tool that visualizes speed limits on roads using OpenStreetMap data, with an integrated route simulator for planning and visualizing vehicle travel.
@@ -24,6 +22,9 @@ A web-based mapping tool that visualizes speed limits on roads using OpenStreetM
 - **Speed Limit Sign Display**  
   Shows the current road's speed limit as a visual sign
 
+- **Hover Speed Tooltip**  
+  Hover over any road to see its speed limit in a tooltip
+
 - **Real-time Updates**  
   Automatically fetches and displays road data when the map is moved or zoomed.
 
@@ -43,11 +44,11 @@ To run this project, you need a modern web browser with JavaScript enabled. The 
    ```bash
    git clone https://github.com/picostar/mapspeed.git
    ```
-2. Open `index-with-routing.html` in your browser, or serve via a local HTTP server:
+2. Open `index.html` in your browser, or serve via a local HTTP server:
    ```bash
    python -m http.server 8000
    ```
-   Then navigate to `http://localhost:8000/index-with-routing.html`
+   Then navigate to `http://localhost:8000/index.html`
 
 ### Usage
 
@@ -106,10 +107,9 @@ To run this project, you need a modern web browser with JavaScript enabled. The 
 
 ```plaintext
 mapspeed/
-├── index-with-routing.html  # Main application (map + route simulator)
-├── index.html               # Legacy version (map only)
-├── route-simulator.js       # Physics-based route simulation engine
-└── README.md                # Project documentation
+├── index.html           # Main application (map + route simulator)
+├── route-simulator.js   # Physics-based route simulation engine
+└── README.md            # Project documentation
 ```
 
 ### Limitations

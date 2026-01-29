@@ -208,12 +208,18 @@
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="route-simulator.js"></script>
   <script>
+    // ========================================
+    // Map Initialization
+    // ========================================
     const map = L.map('map').setView([41.325, -74.165], 13);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 19
     }).addTo(map);
 
+    // ========================================
+    // DOM Element References
+    // ========================================
     const loadingEl = document.getElementById('loading');
     const roadStatusEl = document.getElementById('road-status');
     const routeHintEl = document.getElementById('route-hint');
@@ -223,6 +229,9 @@
     const speedLimitEl = document.getElementById('speed-limit');
     const hoverTooltip = document.getElementById('hover-tooltip');
 
+    // ========================================
+    // Speed Limit Configuration
+    // ========================================
     const speedColorMap = {
       5: '#8B0000', 10: '#DC143C', 15: '#FF0000', 20: '#FF4500',
       25: '#FF6347', 30: '#FFA500', 35: '#FFD700', 40: '#FFFF00',
@@ -260,6 +269,9 @@
       loadingEl.style.display = show ? 'block' : 'none';
     }
 
+    // ========================================
+    // Road Data Loading (Overpass API)
+    // ========================================
     const roadLayerGroup = L.layerGroup().addTo(map);
     
     // Create custom pane for route with higher z-index (above roads)
@@ -353,6 +365,9 @@
     });
     map.whenReady(loadRoads);
 
+    // ========================================
+    // Route Planning State
+    // ========================================
     let startMarker = null;
     let endMarker = null;
     let vehicleMarker = null;
