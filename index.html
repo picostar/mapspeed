@@ -261,7 +261,12 @@
     }
 
     const roadLayerGroup = L.layerGroup().addTo(map);
-    const routeLayerGroup = L.layerGroup().addTo(map); // Separate layer for route, stays on top
+    
+    // Create custom pane for route with higher z-index (above roads)
+    map.createPane('routePane');
+    map.getPane('routePane').style.zIndex = 450;
+    
+    let routeOutline = null;
     let roadSpeedPoints = [];
     const overpassEndpoints = [
       'https://overpass-api.de/api/interpreter',
@@ -333,9 +338,6 @@
         roadStatusEl.textContent = roadCount > 0
           ? `Road speeds loaded: ${roadCount} (inferred: ${inferredCount})`
           : 'No speed-tagged roads found in view.';
-        
-        // Bring route layer to front after roads reload
-        routeLayerGroup.bringToFront();
       } catch (err) {
         console.error('Error loading roads:', err);
         roadStatusEl.textContent = 'Road speeds failed to load. Pan or zoom and try again.';
@@ -370,10 +372,12 @@
       startMarker?.remove();
       endMarker?.remove();
       routePolyline?.remove();
+      routeOutline?.remove();
       vehicleMarker?.remove();
       startMarker = null;
       endMarker = null;
       routePolyline = null;
+      routeOutline = null;
       vehicleMarker = null;
     }
 
@@ -475,13 +479,25 @@
         const coordinates = route.geometry.coordinates.map(c => [c[1], c[0]]);
 
         routePolyline?.remove();
+        routeOutline?.remove();
+        
+        // White outline for contrast
+        routeOutline = L.polyline(coordinates, {
+          color: '#ffffff',
+          weight: 8,
+          opacity: 1,
+          interactive: false,
+          pane: 'routePane'
+        }).addTo(map);
+        
+        // Dark purple route line
         routePolyline = L.polyline(coordinates, {
-          color: '#0ea5e9',
+          color: '#581c87',
           weight: 5,
-          opacity: 0.9,
-          interactive: false
-        });
-        routeLayerGroup.addLayer(routePolyline);
+          opacity: 1,
+          interactive: false,
+          pane: 'routePane'
+        }).addTo(map);
 
         map.fitBounds(routePolyline.getBounds().pad(0.1));
 
