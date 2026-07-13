@@ -280,6 +280,18 @@
     
     let routeOutline = null;
     let roadSpeedPoints = [];
+    // Way-identity speed data: OSM edge (node pair) -> speed, node id -> speed.
+    // Accumulated across viewport loads so route segments outside the current
+    // view keep their data.
+    const edgeSpeedMap = new Map();
+    const nodeSpeedMap = new Map();
+    // OSM node ids along the current route (from OSRM annotations)
+    let routeNodeIds = [];
+    let routeSpeedResolved = [];
+
+    function edgeKey(a, b) {
+      return a < b ? `${a}:${b}` : `${b}:${a}`;
+    }
     const overpassEndpoints = [
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
@@ -340,6 +352,20 @@
             roadCount++;
             if (isInferred) inferredCount++;
 
+            // Index this way's speed by its OSM node ids so route speeds can
+            // be resolved by way identity instead of 2D proximity.
+            if (inferred && Array.isArray(way.nodes)) {
+              for (let i = 0; i < way.nodes.length - 1; i++) {
+                const key = edgeKey(way.nodes[i], way.nodes[i + 1]);
+                if (!isInferred || !edgeSpeedMap.has(key)) {
+                  edgeSpeedMap.set(key, inferred);
+                }
+              }
+              for (const nodeId of way.nodes) {
+                if (!nodeSpeedMap.has(nodeId)) nodeSpeedMap.set(nodeId, inferred);
+              }
+            }
+
             const sampleStep = 3;
             for (let i = 0; i < coords.length; i += sampleStep) {
               const [lat, lon] = coords[i];
@@ -350,6 +376,9 @@
         roadStatusEl.textContent = roadCount > 0
           ? `Road speeds loaded: ${roadCount} (inferred: ${inferredCount})`
           : 'No speed-tagged roads found in view.';
+
+        // Newly loaded ways may cover route segments that were unresolved
+        refreshRouteSpeedLimits();
       } catch (err) {
         console.error('Error loading roads:', err);
         roadStatusEl.textContent = 'Road speeds failed to load. Pan or zoom and try again.';
@@ -462,6 +491,65 @@
       return bestDist <= maxDistMeters * maxDistMeters ? bestSpeed : null;
     }
 
+    /**
+     * Speed for a route coordinate, resolved by way identity: look up the
+     * OSM edge the route traverses at that coordinate. Stacked roads
+     * (overpasses) can't collide because only the routed way's nodes match.
+     */
+    function speedForRouteCoordinate(coordIdx, coordCount) {
+      if (!routeNodeIds.length) return null;
+      const lastNodeIdx = routeNodeIds.length - 1;
+      // Annotation nodes align 1:1 with geometry coordinates; fall back to
+      // proportional mapping if the counts ever disagree.
+      let nodeIdx;
+      if (routeNodeIds.length === coordCount) {
+        nodeIdx = coordIdx;
+      } else {
+        nodeIdx = coordCount > 1
+          ? Math.min(lastNodeIdx, Math.round((coordIdx * lastNodeIdx) / (coordCount - 1)))
+          : 0;
+      }
+
+      // Edge leaving this node, then edge arriving at it
+      if (nodeIdx < lastNodeIdx) {
+        const speed = edgeSpeedMap.get(edgeKey(routeNodeIds[nodeIdx], routeNodeIds[nodeIdx + 1]));
+        if (speed) return speed;
+      }
+      if (nodeIdx > 0) {
+        const speed = edgeSpeedMap.get(edgeKey(routeNodeIds[nodeIdx - 1], routeNodeIds[nodeIdx]));
+        if (speed) return speed;
+      }
+      return nodeSpeedMap.get(routeNodeIds[nodeIdx]) || null;
+    }
+
+    /**
+     * (Re)compute the simulator's per-waypoint speed limits from way-identity
+     * data. Unresolved waypoints inherit the last known speed (or 30 mph) and
+     * are retried whenever more road data loads.
+     */
+    function refreshRouteSpeedLimits() {
+      if (!simulator || !routeNodeIds.length) return;
+      const coordCount = simulator.waypoints.length;
+
+      for (let i = 0; i < coordCount; i++) {
+        if (routeSpeedResolved[i]) continue;
+        const speed = speedForRouteCoordinate(i, coordCount);
+        if (speed) {
+          simulator.speedLimits[i] = speed;
+          routeSpeedResolved[i] = true;
+        }
+      }
+
+      let lastKnown = null;
+      for (let i = 0; i < coordCount; i++) {
+        if (routeSpeedResolved[i]) {
+          lastKnown = simulator.speedLimits[i];
+        } else {
+          simulator.speedLimits[i] = lastKnown || 30;
+        }
+      }
+    }
+
     // Hover tooltip for road speed
     map.on('mousemove', (e) => {
       const speed = getNearestRoadSpeed(e.latlng.lat, e.latlng.lng);
@@ -481,7 +569,7 @@
 
     async function fetchAndDisplayRoute(start, end) {
       try {
-        const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
+        const url = `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson&annotations=nodes`;
         const response = await fetch(url);
         const data = await response.json();
 
@@ -518,11 +606,24 @@
 
         const totalDistMeters = route.distance;
         const totalDistMiles = totalDistMeters * 0.000621371;
-        const speedLimits = coordinates.map(([lat, lon]) => getNearestRoadSpeed(lat, lon) || 30);
 
-        simulator = new RouteSimulator(coordinates, speedLimits, {
+        // OSM node ids the route traverses. Each leg's annotation has one
+        // node per leg coordinate; legs share their boundary coordinate, so
+        // trim only the first node of subsequent legs to keep the node list
+        // aligned 1:1 with the route geometry.
+        routeNodeIds = [];
+        for (const leg of route.legs || []) {
+          const legNodes = leg.annotation?.nodes || [];
+          const startIdx = routeNodeIds.length &&
+            routeNodeIds[routeNodeIds.length - 1] === legNodes[0] ? 1 : 0;
+          routeNodeIds.push(...legNodes.slice(startIdx));
+        }
+        routeSpeedResolved = new Array(coordinates.length).fill(false);
+
+        simulator = new RouteSimulator(coordinates, new Array(coordinates.length).fill(30), {
           totalDistanceMeters: totalDistMeters
         });
+        refreshRouteSpeedLimits();
 
         routeInfoEl.style.display = 'block';
         routeInfoEl.textContent = `Route: ${totalDistMiles.toFixed(1)} mi | ${Math.round(route.duration / 60)} min`;
@@ -583,6 +684,8 @@
     function resetRoute(resetHint = true) {
       stopSimulation();
       simulator = null;
+      routeNodeIds = [];
+      routeSpeedResolved = [];
       planningState = 'start';
       clearRouteGraphics();
       routeInfoEl.style.display = 'none';
@@ -599,16 +702,6 @@
 
     function updateRoute() {
       if (!simulator) return;
-
-      // Update simulator's speed limit based on current position (live lookup)
-      const pos = simulator.getCurrentPosition();
-      const liveSpeed = getNearestRoadSpeed(pos[0], pos[1]);
-      if (liveSpeed && liveSpeed > 0) {
-        simulator.speedLimits[simulator.currentWaypointIdx] = liveSpeed;
-      } else if (!simulator.speedLimits[simulator.currentWaypointIdx]) {
-        // Fallback if no speed data available
-        simulator.speedLimits[simulator.currentWaypointIdx] = 30;
-      }
 
       simulator.update(0.1);
       const status = simulator.getStatus();
