@@ -294,8 +294,7 @@
     }
     const overpassEndpoints = [
       'https://overpass-api.de/api/interpreter',
-      'https://overpass.kumi.systems/api/interpreter',
-      'https://overpass.nchc.org.tw/api/interpreter'
+      'https://overpass.kumi.systems/api/interpreter'
     ];
     let roadRequestId = 0;
 
@@ -303,7 +302,10 @@
       let lastError = null;
       for (const endpoint of overpassEndpoints) {
         try {
-          const response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`);
+          // Abort slow endpoints so a hung server can't stall the fallback chain
+          const response = await fetch(`${endpoint}?data=${encodeURIComponent(query)}`, {
+            signal: AbortSignal.timeout(15000)
+          });
           if (!response.ok) throw new Error(`Overpass error ${response.status}`);
           return await response.json();
         } catch (err) {
@@ -320,7 +322,9 @@
 
       const bounds = map.getBounds();
       const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
-      const query = `[out:json][timeout:25];way["highway"](${bbox});out geom;`;
+      // Only vehicular roads; footpaths and trails have no speed limit and
+      // bloat the response
+      const query = `[out:json][timeout:15];way["highway"]["highway"!~"footway|cycleway|path|steps|pedestrian|track|bridleway|corridor|platform|construction|proposed|abandoned|raceway"](${bbox});out geom;`;
 
       try {
         const data = await fetchOverpass(query);
