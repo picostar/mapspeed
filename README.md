@@ -26,7 +26,7 @@ A web-based mapping tool that visualizes speed limits on roads using OpenStreetM
   Hover over any road to see its speed limit in a tooltip
 
 - **Real-time Updates**  
-  Automatically fetches and displays road data when the map is moved or zoomed.
+  Automatically fetches and displays road data when the map is moved or zoomed. Already-visited areas are cached, so panning or zooming within loaded territory does not refetch.
 
 ## Demo
 
@@ -90,6 +90,12 @@ To run this project, you need a modern web browser with JavaScript enabled. The 
   - **Residential**: 25 mph
   - **Service**: 15 mph
 
+- **Speed Data Loading**:  
+  Road speed data comes from the Overpass API, fetched for the visible map area plus a 20% margin. Each loaded area is cached for the session; moving the map only triggers a new fetch when the view leaves covered territory. Only vehicular road types are requested (footpaths, cycleways, and trails carry no speed limits). Requests time out after 15 seconds and fall back to a second Overpass server.
+
+- **Route Speed Limits**:  
+  The simulator resolves speed limits by OSM way identity. OSRM returns the node IDs of the ways the route follows, and each route segment takes its speed from the matching way. This keeps speeds correct at overpasses and underpasses, where a nearest-road lookup would grab the road on the other level.
+
 - **Simulation Physics**:  
   - Comfort acceleration: 8 ft/s² (~2.4 m/s²)
   - Comfort deceleration: 10 ft/s² (~3 m/s²)
@@ -114,9 +120,10 @@ mapspeed/
 
 ### Limitations
 
-- The accuracy of speed limits depends on data available in OpenStreetMap
-- Route calculation uses OSRM public server (may have rate limits)
-- Overpass API has multiple fallback endpoints for reliability
+- **Speed loading can be slow or fail when Overpass servers are busy.** The public Overpass servers are shared infrastructure and intermittently return errors (HTTP 504) or respond slowly under load. The app times out each request after 15 seconds and tries a second server, so the worst case is about 30 seconds before a "pan or zoom and try again" message appears. This is server-side load; retrying a moment later usually works.
+- The accuracy of speed limits depends on data available in OpenStreetMap. Roads without a `maxspeed` tag get an inferred speed based on road type (shown dashed).
+- Route calculation uses the OSRM public server, which may rate-limit and runs on a slightly older OSM snapshot; route segments that cannot be matched to loaded road data fall back to the last known speed (or 30 mph).
+- Cached road data lasts for the browser session; a refresh clears it.
 
 ### Contributions
 
@@ -130,7 +137,3 @@ This project is licensed under the [MIT License](LICENSE).
 
 - **[OpenStreetMap](https://www.openstreetmap.org/)** for providing the road data.
 - **[Leaflet.js](https://leafletjs.com/)** for the awesome mapping library.
-
----
-
-Let me know if you’d like me to include any additional sections or make modifications!

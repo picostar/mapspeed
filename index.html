@@ -280,6 +280,12 @@
     
     let routeOutline = null;
     let roadSpeedPoints = [];
+    // Coverage cache: areas already fetched and the way ids drawn, so
+    // panning/zooming inside loaded territory skips the Overpass call
+    let loadedAreas = [];
+    let loadedWayIds = new Set();
+    let totalRoadCount = 0;
+    let totalInferredCount = 0;
     // Way-identity speed data: OSM edge (node pair) -> speed, node id -> speed.
     // Accumulated across viewport loads so route segments outside the current
     // view keep their data.
@@ -316,11 +322,25 @@
     }
 
     async function loadRoads() {
+      // Cap accumulated data so long exploration sessions don't bloat memory
+      if (loadedWayIds.size > 25000) {
+        roadLayerGroup.clearLayers();
+        roadSpeedPoints = [];
+        loadedAreas = [];
+        loadedWayIds.clear();
+        totalRoadCount = 0;
+        totalInferredCount = 0;
+      }
+
+      // Skip the fetch entirely when the view is inside already-loaded territory
+      if (loadedAreas.some(area => area.contains(map.getBounds()))) return;
+
       const currentId = ++roadRequestId;
       showLoading(true);
       roadStatusEl.textContent = 'Road speeds loading…';
 
-      const bounds = map.getBounds();
+      // Fetch with padding so small pans stay within the covered area
+      const bounds = map.getBounds().pad(0.2);
       const bbox = `${bounds.getSouth()},${bounds.getWest()},${bounds.getNorth()},${bounds.getEast()}`;
       // Only vehicular roads; footpaths and trails have no speed limit and
       // bloat the response
@@ -330,13 +350,9 @@
         const data = await fetchOverpass(query);
         if (currentId !== roadRequestId) return;
 
-        roadLayerGroup.clearLayers();
-        roadSpeedPoints = [];
-        let roadCount = 0;
-        let inferredCount = 0;
-
         data.elements.forEach(way => {
-          if (way.geometry && way.geometry.length > 1) {
+          if (!loadedWayIds.has(way.id) && way.geometry && way.geometry.length > 1) {
+            loadedWayIds.add(way.id);
             const coords = way.geometry.map(pt => [pt.lat, pt.lon]);
             const maxspeed = way.tags?.maxspeed;
             const highwayType = way.tags?.highway;
@@ -353,8 +369,8 @@
             }).bindPopup(`Road: ${way.tags?.name || 'Unnamed'}<br>Speed: ${parsedMax ? maxspeed : (inferred ? `${inferred} mph (inferred)` : 'Unknown')}`);
 
             roadLayerGroup.addLayer(polyline);
-            roadCount++;
-            if (isInferred) inferredCount++;
+            totalRoadCount++;
+            if (isInferred) totalInferredCount++;
 
             // Index this way's speed by its OSM node ids so route speeds can
             // be resolved by way identity instead of 2D proximity.
@@ -377,8 +393,9 @@
             }
           }
         });
-        roadStatusEl.textContent = roadCount > 0
-          ? `Road speeds loaded: ${roadCount} (inferred: ${inferredCount})`
+        loadedAreas.push(bounds);
+        roadStatusEl.textContent = totalRoadCount > 0
+          ? `Road speeds loaded: ${totalRoadCount} (inferred: ${totalInferredCount})`
           : 'No speed-tagged roads found in view.';
 
         // Newly loaded ways may cover route segments that were unresolved
