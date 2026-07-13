@@ -120,7 +120,7 @@ mapspeed/
 
 ### Limitations
 
-- **Speed loading can be slow or fail when Overpass servers are busy.** The public Overpass servers are shared infrastructure and intermittently return errors (HTTP 504) or respond slowly under load. The app times out each request after 15 seconds and tries a second server, so the worst case is about 30 seconds before a "pan or zoom and try again" message appears. This is server-side load; retrying a moment later usually works.
+- **Speed loading can be slow or fail when Overpass servers are busy.** The public Overpass servers are shared infrastructure and intermittently return errors (HTTP 504) or respond slowly under load. The app times out each request after 15 seconds and tries a second server, so the worst case is about 30 seconds before an error message appears with the failure reason. This is server-side load; the Reload button retries the current view and usually works a moment later.
 - The accuracy of speed limits depends on data available in OpenStreetMap. Roads without a `maxspeed` tag get an inferred speed based on road type (shown dashed).
 - Route calculation uses the OSRM public server, which may rate-limit and runs on a slightly older OSM snapshot; route segments that cannot be matched to loaded road data fall back to the last known speed (or 30 mph).
 - Cached road data lasts for the browser session; a refresh clears it.

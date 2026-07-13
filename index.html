@@ -170,6 +170,7 @@
       <div class="panel-title">Mapspeed + Route Simulator</div>
       <div class="panel-actions">
         <button id="reset-btn" class="primary-btn" onclick="resetRoute()">Reset Route</button>
+        <button id="reload-btn" class="ghost-btn" onclick="reloadRoads()" title="Refetch road speeds for the current view">Reload</button>
         <button id="toggle-btn" class="ghost-btn" onclick="togglePause()" disabled>Pause</button>
       </div>
       <div id="road-status" class="panel-hint">Road speeds loading…</div>
@@ -321,7 +322,7 @@
       throw lastError || new Error('Overpass request failed');
     }
 
-    async function loadRoads() {
+    async function loadRoads(force = false) {
       // Cap accumulated data so long exploration sessions don't bloat memory
       if (loadedWayIds.size > 25000) {
         roadLayerGroup.clearLayers();
@@ -333,7 +334,7 @@
       }
 
       // Skip the fetch entirely when the view is inside already-loaded territory
-      if (loadedAreas.some(area => area.contains(map.getBounds()))) return;
+      if (!force && loadedAreas.some(area => area.contains(map.getBounds()))) return;
 
       const currentId = ++roadRequestId;
       showLoading(true);
@@ -402,18 +403,32 @@
         refreshRouteSpeedLimits();
       } catch (err) {
         console.error('Error loading roads:', err);
-        roadStatusEl.textContent = 'Road speeds failed to load. Pan or zoom and try again.';
+        let reason;
+        if (err?.name === 'TimeoutError') {
+          reason = 'servers took longer than 15s';
+        } else if (/Overpass error (\d+)/.test(err?.message)) {
+          reason = `server returned HTTP ${err.message.match(/(\d+)/)[1]}, likely overloaded`;
+        } else {
+          reason = err?.message || 'network error';
+        }
+        roadStatusEl.textContent = `Road speeds failed to load: ${reason}. Both Overpass servers were tried; click Reload to retry.`;
       } finally {
         if (currentId === roadRequestId) showLoading(false);
       }
     }
 
+    function reloadRoads() {
+      clearTimeout(roadLoadTimer);
+      loadRoads(true);
+    }
+
     let roadLoadTimer = null;
     map.on('moveend', () => {
       clearTimeout(roadLoadTimer);
-      roadLoadTimer = setTimeout(loadRoads, 300);
+      roadLoadTimer = setTimeout(() => loadRoads(), 300);
     });
-    map.whenReady(loadRoads);
+    // Wrap so Leaflet's event object isn't passed as the force flag
+    map.whenReady(() => loadRoads());
 
     // ========================================
     // Route Planning State
